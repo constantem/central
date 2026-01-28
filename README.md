@@ -1,0 +1,5 @@
+- DB 初始資料
+  - /resources/db/*.sql
+- H2 console
+  - 瀏覽器網址列輸入: http://localhost:5017/central/h2-console
+  - JDBC URL: jdbc:h2:mem:centraldb
