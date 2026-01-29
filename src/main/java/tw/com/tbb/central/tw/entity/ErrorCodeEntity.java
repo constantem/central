@@ -1,21 +1,17 @@
 package tw.com.tbb.central.tw.entity;
 
-import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
-//本行
 @Getter
 @Setter
 @Entity
-@Table(name = "account")
-public class AccountEntity {
+@Table(name = "error_code")
+public class ErrorCodeEntity {
     @Id
-    @Column(name = "account_no")
-    private String accountNo;
-    private String cusidn;
-    private String balance;
+    private String code;
+    private String message;
 }

@@ -1,0 +1,2 @@
+INSERT INTO designated_account (bank_code, account_no, cusidn) VALUES ('004','004983450012','A123456814');
+INSERT INTO designated_account (bank_code, account_no, cusidn) VALUES ('007','007120034556','A123456814' );

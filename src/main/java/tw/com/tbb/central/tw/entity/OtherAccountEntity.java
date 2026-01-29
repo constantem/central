@@ -1,18 +1,19 @@
 package tw.com.tbb.central.tw.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
-//本行
+//模擬他行
 @Getter
 @Setter
 @Entity
-@Table(name = "account")
-public class AccountEntity {
+@Table(name = "other_account")
+@IdClass(OtherAccountId.class)
+public class OtherAccountEntity {
+    @Id
+    @Column(name = "bank_code")
+    private String bankCode;
     @Id
     @Column(name = "account_no")
     private String accountNo;
