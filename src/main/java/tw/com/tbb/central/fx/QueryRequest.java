@@ -4,6 +4,6 @@ import lombok.Data;
 
 @Data
 public class QueryRequest {
-    @JsonProperty("CUSIDN")
+
     private String cusidn;
 }
