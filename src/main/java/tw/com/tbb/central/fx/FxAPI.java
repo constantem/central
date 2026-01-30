@@ -37,22 +37,21 @@ public class FxAPI {
         }
 
         List<FxAccountEntity> entities = fxAccountRepository.findAll();
-        
-        if (entities.isEmpty()) {
-            throw new RuntimeException("E404");
-        }
+        if (entities.isEmpty()) throw new RuntimeException("E404");
 
-        return entities.stream().map(entity -> {
+        List<AccountDTO> accountList = entities.stream().map(entity -> {
             List<BalanceDTO> balanceList = new ArrayList<>();
             if (entity.getBalances() != null) {
                 entity.getBalances().forEach((curr, bal) -> balanceList.add(new BalanceDTO(curr, bal)));
             }
-            
             return AccountDTO.builder()
                 .accountNumber(entity.getAccountNumber())
                 .balances(balanceList)
                 .build();
         }).collect(Collectors.toList());
+
+        // 回傳物件：code 會自動填入 0000
+        return QueryResponse.superBuilder().accountList(accountList).build();
     }
 
     @PostMapping("/f007")
@@ -95,9 +94,9 @@ public class FxAPI {
     }
 
 
-	@PostMapping("/f574")
+    @PostMapping("/f574")
     @Transactional 
-    public Map<String, Object> executeTrade(@RequestBody Map<String, String> request) {
+    public TradeResponse executeTrade(@RequestBody Map<String, String> request) {
         String quoteId = request.get("quoteId");
         String fromAccount = request.get("fromAccount");
         String toAccount = request.get("toAccount");
@@ -137,7 +136,6 @@ public class FxAPI {
                 FxAccountEntity toFxAcc = fxAccountRepository.findById(toAccount)
                         .orElseThrow(() -> new RuntimeException("E205"));
                 
-                // 防禦：如果資料庫抓出來的 Map 是空的，要手動初始化
                 if (toFxAcc.getBalances() == null) {
                     toFxAcc.setBalances(new HashMap<>());
                 }
@@ -170,23 +168,22 @@ public class FxAPI {
                 twdAccountRepository.save(toTwdAcc);
             }
 
-            // 4. 回傳成功結果 (使用 LinkedHashMap 確保順序)
-            Map<String, Object> response = new LinkedHashMap<>();
-            response.put("tradeTime", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-            response.put("fromAccount", fromAccount);
-            response.put("fromAmount", tradeAmount);
-            response.put("fromCurr", quote.getFromCurr());
-            response.put("toAccount", toAccount);
-            response.put("toAmount", convertedAmount);
-            response.put("toCurr", quote.getToCurr());
-            response.put("rate", quote.getRate());
-            response.put("availableBalance", availableBalance);
-
             log.info("--- 交易成功 --- 結算餘額: {}", availableBalance);
-            return response;
+
+            // 4. 回傳 TradeResponse 物件 (繼承 BaseResponse，code 預設 0000)
+            return TradeResponse.superBuilder()
+                    .tradeTime(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                    .fromAccount(fromAccount)
+                    .fromAmount(tradeAmount)
+                    .fromCurr(quote.getFromCurr())
+                    .toAccount(toAccount)
+                    .toAmount(convertedAmount)
+                    .toCurr(quote.getToCurr())
+                    .rate(quote.getRate())
+                    .availableBalance(availableBalance)
+                    .build();
 
         } catch (RuntimeException e) {
-            // 如果是我們定義的 E 開頭錯誤，直接丟給 ExceptionHandler
             if (e.getMessage() != null && e.getMessage().startsWith("E")) {
                 log.warn("交易業務檢核失敗: {}", e.getMessage());
                 throw e;

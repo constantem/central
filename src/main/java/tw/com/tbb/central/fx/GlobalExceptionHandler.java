@@ -12,8 +12,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
         ErrorResponse error = new ErrorResponse(
-            ex.getMessage(), 
-            System.currentTimeMillis()
+            ex.getMessage()
         );
         return new ResponseEntity<>(error, HttpStatus.FORBIDDEN);
     }
@@ -22,8 +21,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleAllExceptions(Exception ex) {
         ErrorResponse error = new ErrorResponse(
-            "E999", 
-            System.currentTimeMillis()
+            "E999"
         );
         return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
     }

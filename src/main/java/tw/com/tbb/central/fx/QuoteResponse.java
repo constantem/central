@@ -6,10 +6,11 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
 @Data
-@Builder
+@EqualsAndHashCode(callSuper = true)
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class QuoteResponse {
+public class QuoteResponse extends BaseResponse{
     private String quoteId;         // 議價編號 (S29FS0 + mmss)
     private Double rate;            // 套用的匯率
     private Double convertedAmount; // 換算後的金額
