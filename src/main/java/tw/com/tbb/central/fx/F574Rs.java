@@ -8,7 +8,7 @@ import lombok.experimental.SuperBuilder;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class TradeResponse extends BaseResponse {
+public class F574Rs extends BaseResponse {
     private String tradeTime;
     private String fromAccount;
     private Double fromAmount;

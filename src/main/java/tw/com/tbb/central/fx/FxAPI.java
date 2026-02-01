@@ -10,10 +10,15 @@ import java.util.stream.Collectors;
 import tw.com.tbb.central.tw.repository.AccountRepository;
 import tw.com.tbb.central.tw.entity.AccountEntity;
 import org.springframework.transaction.annotation.Transactional;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Value;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/fx")
 @Slf4j
+@Tag(name = "FX API", description = "外幣電文 - 中心主機模擬")
 public class FxAPI {
 
     @Autowired
@@ -25,19 +30,21 @@ public class FxAPI {
     @Autowired
     private FxQuoteRepository quoteRepository;
 
-	@Autowired
+    @Autowired
     private AccountRepository twdAccountRepository;
 
-    @PostMapping("/n510")
-    public List<AccountDTO> queryBalances(@RequestBody QueryRequest request) {
-        log.info("收到查詢請求 CUSIDN: {}", request.getCusidn());
+    @Value("${password}")
+    private String password;
 
+    @Operation(summary = "N510 自行外幣餘額查詢")
+    @PostMapping("/n510")
+    public N510Rs queryBalances(@Valid @RequestBody N510Rq request) {
         if (!"A123456814".equals(request.getCusidn())) {
             throw new IllegalArgumentException("E101");
         }
 
         List<FxAccountEntity> entities = fxAccountRepository.findAll();
-        if (entities.isEmpty()) throw new RuntimeException("E404");
+        if (entities.isEmpty()) throw new IllegalArgumentException("E107");
 
         List<AccountDTO> accountList = entities.stream().map(entity -> {
             List<BalanceDTO> balanceList = new ArrayList<>();
@@ -50,22 +57,32 @@ public class FxAPI {
                 .build();
         }).collect(Collectors.toList());
 
-        // 回傳物件：code 會自動填入 0000
-        return QueryResponse.superBuilder().accountList(accountList).build();
+        return N510Rs.builder().accountList(accountList).build();
     }
 
+    @Operation(summary = "F007 匯率議價 (提前檢核餘額)")
     @PostMapping("/f007")
-    public QuoteResponse getQuote(@RequestBody QuoteRequest request) {
-        log.info("收到議價請求: {} -> {}", request.getFromCurr(), request.getToCurr());
-
+    public F007Rs getQuote(@Valid @RequestBody F007Rq request) {
+        log.info("--- [F007] 議價餘額檢核 ---");
+        
         boolean isFromTwd = "TWD".equals(request.getFromCurr());
         boolean isToTwd = "TWD".equals(request.getToCurr());
+        if (isFromTwd == isToTwd) throw new IllegalArgumentException("E102"); 
 
-        if (!isFromTwd && !isToTwd) throw new IllegalArgumentException("E102");
-        
+        if (isFromTwd) {
+            AccountEntity twdAcc = twdAccountRepository.findById(request.getFromAccount())
+                    .orElseThrow(() -> new IllegalArgumentException("E107"));
+            if (parseDoubleSafe(twdAcc.getBalance()) < request.getAmount()) throw new IllegalArgumentException("E106");
+        } else {
+            FxAccountEntity fxAcc = fxAccountRepository.findById(request.getFromAccount())
+                    .orElseThrow(() -> new IllegalArgumentException("E107"));
+            Double foreignBal = fxAcc.getBalances().getOrDefault(request.getFromCurr(), 0.0);
+            if (foreignBal < request.getAmount()) throw new IllegalArgumentException("E106");
+        }
+
         String foreignCurr = isFromTwd ? request.getToCurr() : request.getFromCurr();
         FxRateEntity rateEntity = rateRepository.findById(foreignCurr)
-                .orElseThrow(() -> new RuntimeException("E103"));
+                .orElseThrow(() -> new IllegalArgumentException("E103"));
 
         double rate = isFromTwd ? rateEntity.getSellRate() : rateEntity.getBuyRate();
         double convertedAmount = isFromTwd ? (request.getAmount() / rate) : (request.getAmount() * rate);
@@ -81,128 +98,106 @@ public class FxAPI {
                 .amount(request.getAmount())
                 .convertedAmount(convertedAmount)
                 .rate(rate)
-                .expiryTime(LocalDateTime.now().plusMinutes(10))
+                .expiryTime(LocalDateTime.now().plusSeconds(35))
                 .build();
         
         quoteRepository.save(quoteLog);
 
-        return QuoteResponse.builder()
+        return F007Rs.builder()
                 .quoteId(quoteId)
                 .rate(rate)
                 .convertedAmount(convertedAmount)
                 .build();
     }
 
-
+    @Operation(summary = "F574 外幣買賣執行 (含帳務終端檢核)")
     @PostMapping("/f574")
     @Transactional 
-    public TradeResponse executeTrade(@RequestBody Map<String, String> request) {
-        String quoteId = request.get("quoteId");
-        String fromAccount = request.get("fromAccount");
-        String toAccount = request.get("toAccount");
+    public F574Rs executeTrade(@Valid @RequestBody F574Rq request) {
+        log.info("--- [F574] 主機帳務檢核與扣款 ---");
 
-        log.info("--- 交易開始 --- QuoteId: {}, From: {}, To: {}", quoteId, fromAccount, toAccount);
+        if (!password.equals(request.getPinnew())) {
+            throw new IllegalArgumentException("E108");
+        }
 
         try {
-            // 1. 驗證議價單是否存在
-            FxQuoteEntity quote = quoteRepository.findById(quoteId)
-                    .orElseThrow(() -> new RuntimeException("E104"));
+            FxQuoteEntity quote = quoteRepository.findById(request.getQuoteId())
+                    .orElseThrow(() -> new IllegalArgumentException("E104"));
 
-            // 2. 檢查過期
-            if (quote.getExpiryTime() == null || quote.getExpiryTime().isBefore(LocalDateTime.now())) {
-                throw new RuntimeException("E105");
+            if (quote.getExpiryTime().isBefore(LocalDateTime.now())) {
+                throw new IllegalArgumentException("E105");
             }
 
             Double tradeAmount = quote.getAmount();
             Double convertedAmount = quote.getConvertedAmount();
-            Double availableBalance = 0.0;
+            Double availBal = 0.0;
 
-            // 3. 處理台幣或外幣扣款邏輯
+            // 3. 執行帳務更新 (檢核轉出入帳號與餘額)
             if ("TWD".equals(quote.getFromCurr())) {
-                // 【結匯邏輯：台幣 -> 外幣】
-                AccountEntity twdAcc = twdAccountRepository.findById(fromAccount)
-                        .orElseThrow(() -> new RuntimeException("E203"));
+                // 【結匯】轉出(台幣) -> 轉入(外幣)
+                AccountEntity twd = twdAccountRepository.findById(request.getFromAccount())
+                        .orElseThrow(() -> new IllegalArgumentException("E107")); // 轉出台幣帳號不存在
                 
-                Double currentBal = parseDoubleSafe(twdAcc.getBalance());
-                if (currentBal < tradeAmount) throw new RuntimeException("E204");
+                FxAccountEntity fx = fxAccountRepository.findById(request.getToAccount())
+                        .orElseThrow(() -> new IllegalArgumentException("E109")); // 轉入外幣帳號不存在或異常
+                
+                Double currentTwdBal = parseDoubleSafe(twd.getBalance());
+                if (currentTwdBal < tradeAmount) throw new IllegalArgumentException("E106"); // 餘額不足
 
-                // 更新台幣帳戶
-                Double newBal = currentBal - tradeAmount;
-                twdAcc.setBalance(String.format("%.2f", newBal)); 
-                twdAccountRepository.save(twdAcc);
-                availableBalance = newBal;
+                // 更新餘額
+                Double newTwdBal = currentTwdBal - tradeAmount;
+                twd.setBalance(String.format("%.2f", newTwdBal));
+                twdAccountRepository.save(twd);
+                availBal = newTwdBal;
                 
-                // 更新外幣帳戶 (增加餘額)
-                FxAccountEntity toFxAcc = fxAccountRepository.findById(toAccount)
-                        .orElseThrow(() -> new RuntimeException("E205"));
-                
-                if (toFxAcc.getBalances() == null) {
-                    toFxAcc.setBalances(new HashMap<>());
-                }
-                
-                Double foreignBal = toFxAcc.getBalances().getOrDefault(quote.getToCurr(), 0.0);
-                toFxAcc.getBalances().put(quote.getToCurr(), foreignBal + convertedAmount);
-                fxAccountRepository.save(toFxAcc);
+                Double currentFxBal = fx.getBalances().getOrDefault(quote.getToCurr(), 0.0);
+                fx.getBalances().put(quote.getToCurr(), currentFxBal + convertedAmount);
+                fxAccountRepository.save(fx);
 
             } else {
-                // 【結售邏輯：外幣 -> 台幣】
-                FxAccountEntity fromFxAcc = fxAccountRepository.findById(fromAccount)
-                        .orElseThrow(() -> new RuntimeException("E203"));
+                // 【結售】轉出(外幣) -> 轉入(台幣)
+                FxAccountEntity fx = fxAccountRepository.findById(request.getFromAccount())
+                        .orElseThrow(() -> new IllegalArgumentException("E107")); // 轉出外幣帳號不存在
                 
-                if (fromFxAcc.getBalances() == null) throw new RuntimeException("E203");
-                
-                Double currentForeignBal = fromFxAcc.getBalances().getOrDefault(quote.getFromCurr(), 0.0);
-                if (currentForeignBal < tradeAmount) throw new RuntimeException("E204");
+                AccountEntity twd = twdAccountRepository.findById(request.getToAccount())
+                        .orElseThrow(() -> new IllegalArgumentException("E109")); // 轉入台幣帳號不存在或異常
 
-                // 更新外幣帳戶 (扣除餘額)
-                fromFxAcc.getBalances().put(quote.getFromCurr(), currentForeignBal - tradeAmount);
-                fxAccountRepository.save(fromFxAcc);
-                availableBalance = fromFxAcc.getBalances().get(quote.getFromCurr());
+                Double currentFxBal = fx.getBalances().getOrDefault(quote.getFromCurr(), 0.0);
+                if (currentFxBal < tradeAmount) throw new IllegalArgumentException("E106"); // 餘額不足
 
-                // 更新台幣帳戶 (增加餘額)
-                AccountEntity toTwdAcc = twdAccountRepository.findById(toAccount)
-                        .orElseThrow(() -> new RuntimeException("E205"));
-                Double currentTwdBal = parseDoubleSafe(toTwdAcc.getBalance());
-                Double newTwdBal = currentTwdBal + convertedAmount;
-                toTwdAcc.setBalance(String.format("%.2f", newTwdBal));
-                twdAccountRepository.save(toTwdAcc);
+                // 更新餘額
+                fx.getBalances().put(quote.getFromCurr(), currentFxBal - tradeAmount);
+                fxAccountRepository.save(fx);
+                availBal = fx.getBalances().get(quote.getFromCurr());
+
+                Double newTwdBal = parseDoubleSafe(twd.getBalance()) + convertedAmount;
+                twd.setBalance(String.format("%.2f", newTwdBal));
+                twdAccountRepository.save(twd);
             }
 
-            log.info("--- 交易成功 --- 結算餘額: {}", availableBalance);
-
-            // 4. 回傳 TradeResponse 物件 (繼承 BaseResponse，code 預設 0000)
-            return TradeResponse.superBuilder()
+            return F574Rs.builder()
                     .tradeTime(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                    .fromAccount(fromAccount)
+                    .fromAccount(request.getFromAccount())
                     .fromAmount(tradeAmount)
                     .fromCurr(quote.getFromCurr())
-                    .toAccount(toAccount)
+                    .toAccount(request.getToAccount())
                     .toAmount(convertedAmount)
                     .toCurr(quote.getToCurr())
                     .rate(quote.getRate())
-                    .availableBalance(availableBalance)
+                    .availableBalance(availBal)
                     .build();
 
-        } catch (RuntimeException e) {
-            if (e.getMessage() != null && e.getMessage().startsWith("E")) {
-                log.warn("交易業務檢核失敗: {}", e.getMessage());
-                throw e;
-            }
-            log.error("交易執行發生非預期 RuntimeException:", e);
-            throw new RuntimeException("E999");
+        } catch (IllegalArgumentException e) {
+            // 直接拋出業務錯誤碼
+            throw e;
         } catch (Exception e) {
-            log.error("交易執行發生系統級 Exception:", e);
-            throw new RuntimeException("E999");
+            log.error("系統異常:", e);
+            throw new IllegalArgumentException("E999");
         }
     }
 
     private Double parseDoubleSafe(String val) {
-        try {
-            if (val == null || val.trim().isEmpty()) return 0.0;
-            return Double.parseDouble(val.replace(",", ""));
-        } catch (NumberFormatException e) {
-            log.error("無法將字串轉換為金額: [{}]", val);
-            throw new RuntimeException("E999");
-        }
+        if (val == null || val.trim().isEmpty()) return 0.0;
+        return Double.parseDouble(val.replace(",", ""));
     }
 }

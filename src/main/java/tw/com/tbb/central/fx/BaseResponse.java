@@ -4,9 +4,10 @@ import lombok.Data;
 import lombok.experimental.SuperBuilder;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
+import lombok.*;
 
 @Data
-@SuperBuilder // 使用 SuperBuilder 讓子類繼承時也能使用 Builder
+@SuperBuilder // 必須是 SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 public class BaseResponse {
