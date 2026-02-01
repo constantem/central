@@ -9,6 +9,6 @@ import java.util.List;
 @SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
-public class QueryResponse extends BaseResponse {
+public class N510Rs extends BaseResponse {
     private List<AccountDTO> accountList; // 內含原有的帳號與餘額清單
 }
