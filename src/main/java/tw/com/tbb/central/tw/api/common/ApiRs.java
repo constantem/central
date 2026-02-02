@@ -10,9 +10,9 @@ import lombok.experimental.SuperBuilder;
 @Getter
 @Setter
 public class ApiRs {
-    @Schema(description = "回應代碼")
+    @Schema(description = "回應代碼", example = "0000")
     private String code;
-    @Schema(description = "回應訊息")
+    @Schema(description = "回應訊息", example = "成功")
     private String message;
 
     public static ApiRs error(String errorCode) {

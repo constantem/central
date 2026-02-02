@@ -10,16 +10,18 @@ import java.util.List;
 @Getter
 @Setter
 public class N110Rs extends ApiRs {
-    @Schema(description = "筆數")
+    @Schema(description = "筆數", example = "1")
     private String count;
+    @Schema(description = "帳號清單")
     private List<Account> accounts;
 
+    @Schema(name = "N110Account", description = "帳號清單資訊")
     @Getter
     @Setter
     public static class Account {
-        @Schema(description = "帳號")
+        @Schema(description = "帳號", example = "050100000001")
         private String acn;
-        @Schema(description = "餘額")
+        @Schema(description = "餘額", example = "10000")
         private String bal;
     }
 }
