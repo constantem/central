@@ -4,3 +4,4 @@
   - 瀏覽器網址列輸入: http://localhost:5017/central/h2-console
   - JDBC URL: jdbc:h2:mem:centraldb
 - swagger:  http://localhost:5017/central/swagger-ui/index.html
+- scalar: http://localhost:5017/central/scalar
