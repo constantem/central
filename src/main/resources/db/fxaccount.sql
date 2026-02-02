@@ -28,8 +28,8 @@ INSERT INTO FX_ACCOUNT_BALANCES (account_number, currency, balance) VALUES ('010
 -- 插入匯率假資料 (以 TWD 為基準)
 -- 銀行買入 (Buy)：客戶把外幣賣給銀行，換回台幣
 -- 銀行賣出 (Sell)：客戶跟銀行買外幣，付出台幣
-INSERT INTO FX_RATE (currency, buy_rate, sell_rate) VALUES ('USD', 31.5, 32.1);
-INSERT INTO FX_RATE (currency, buy_rate, sell_rate) VALUES ('JPY', 0.21, 0.23);
-INSERT INTO FX_RATE (currency, buy_rate, sell_rate) VALUES ('CAD', 22.8, 23.5);
-INSERT INTO FX_RATE (currency, buy_rate, sell_rate) VALUES ('HKD', 3.9, 4.2);
-INSERT INTO FX_RATE (currency, buy_rate, sell_rate) VALUES ('GBP', 39.5, 40.8);
+INSERT INTO FX_RATE (currency, buy_rate, sell_rate) VALUES ('USD', 31.5341, 32.1098);
+INSERT INTO FX_RATE (currency, buy_rate, sell_rate) VALUES ('JPY', 0.2121, 0.2311);
+INSERT INTO FX_RATE (currency, buy_rate, sell_rate) VALUES ('CAD', 22.8921, 23.4552);
+INSERT INTO FX_RATE (currency, buy_rate, sell_rate) VALUES ('HKD', 3.9224, 4.2981);
+INSERT INTO FX_RATE (currency, buy_rate, sell_rate) VALUES ('GBP', 39.5519, 40.8418);

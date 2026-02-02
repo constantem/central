@@ -11,6 +11,7 @@ import jakarta.validation.constraints.Pattern;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Schema(description = "F007匯率確認請求")
 public class F007Rq {
 
     @NotBlank(message = "CUSIDN is required")
